@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Happy Dog Jump Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #87CEEB 0%, #E0F6FF 100%);
+        }
+        
+        #gameCanvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #333;
+            z-index: 100;
+        }
+        
+        #score {
+            font-size: 28px;
+            font-weight: bold;
+            color: #FF6B35;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            margin-bottom: 10px;
+        }
+        
+        #instructions {
+            font-size: 16px;
+            color: #555;
+            background: rgba(255,255,255,0.9);
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255,255,255,0.95);
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            display: none;
+            z-index: 200;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        
+        #gameOver h2 {
+            color: #FF6B35;
+            font-size: 36px;
+            margin-bottom: 20px;
+        }
+        
+        #finalScore {
+            font-size: 24px;
+            color: #333;
+            margin-bottom: 30px;
+        }
+        
+        #restartBtn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        #restartBtn:hover {
+            background: #45a049;
+            transform: scale(1.05);
+        }
+        
+        #startScreen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255,255,255,0.95);
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            z-index: 200;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        
+        #startScreen h1 {
+            color: #FF6B35;
+            font-size: 42px;
+            margin-bottom: 20px;
+        }
+        
+        #startBtn {
+            background: #FF6B35;
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        #startBtn:hover {
+            background: #e55a2b;
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <div id="score">Score: 0</div>
+        <div id="instructions">
+            <strong>How to Play:</strong><br>
+            Press SPACE or click to make the dog jump!<br>
+            Avoid trees 🌲 and fences 🚧<br>
+            Have fun! 🐕
+        </div>
+    </div>
+    
+    <div id="startScreen">
+        <h1>🐕 Happy Dog Jump!</h1>
+        <p style="font-size: 18px; margin-bottom: 30px; color: #555;">Help the happy dog jump over obstacles!</p>
+        <button id="startBtn">Start Game</button>
+    </div>
+    
+    <div id="gameOver">
+        <h2>Game Over!</h2>
+        <div id="finalScore">Score: 0</div>
+        <button id="restartBtn">Play Again</button>
+    </div>
+    
+    <canvas id="gameCanvas"></canvas>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Game variables
+        let scene, camera, renderer;
+        let dog, dogGroup;
+        let obstacles = [];
+        let trees = [];
+        let fences = [];
+        let score = 0;
+        let gameRunning = false;
+        let isJumping = false;
+        let jumpVelocity = 0;
+        let gravity = -0.015;
+        let groundLevel = 0;
+        let gameSpeed = 0.15;
+        let obstacleTimer = 0;
+        let animationId;
+        
+        // Initialize the game
+        function init() {
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB);
+            scene.fog = new THREE.Fog(0x87CEEB, 20, 100);
+            
+            // Camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(5, 3, 8);
+            camera.lookAt(0, 1, 0);
+            
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gameCanvas'), antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            
+            // Lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(10, 20, 10);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            scene.add(directionalLight);
+            
+            // Ground
+            const groundGeometry = new THREE.PlaneGeometry(200, 200);
+            const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x7CFC00 });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.y = groundLevel;
+            ground.receiveShadow = true;
+            scene.add(ground);
+            
+            // Create the dog
+            createDog();
+            
+            // Handle window resize
+            window.addEventListener('resize', onWindowResize, false);
+            
+            // Handle input
+            document.addEventListener('keydown', handleKeyDown);
+            document.addEventListener('click', handleClick);
+            document.getElementById('startBtn').addEventListener('click', startGame);
+            document.getElementById('restartBtn').addEventListener('click', restartGame);
+        }
+        
+        function createDog() {
+            dogGroup = new THREE.Group();
+            
+            // Body
+            const bodyGeometry = new THREE.BoxGeometry(1, 0.6, 1.5);
+            const bodyMaterial = new THREE.MeshLambertMaterial({ color: 0xD2691E });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            body.castShadow = true;
+            dogGroup.add(body);
+            
+            // Head
+            const headGeometry = new THREE.BoxGeometry(0.7, 0.7, 0.8);
+            const headMaterial = new THREE.MeshLambertMaterial({ color: 0xD2691E });
+            const head = new THREE.Mesh(headGeometry, headMaterial);
+            head.position.set(0, 0.5, 1);
+            head.castShadow = true;
+            dogGroup.add(head);
+            
+            // Ears
+            const earGeometry = new THREE.BoxGeometry(0.2, 0.3, 0.4);
+            const earMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+            
+            const leftEar = new THREE.Mesh(earGeometry, earMaterial);
+            leftEar.position.set(-0.25, 0.8, 1);
+            leftEar.rotation.z = 0.3;
+            leftEar.castShadow = true;
+            dogGroup.add(leftEar);
+            
+            const rightEar = new THREE.Mesh(earGeometry, earMaterial);
+            rightEar.position.set(0.25, 0.8, 1);
+            rightEar.rotation.z = -0.3;
+            rightEar.castShadow = true;
+            dogGroup.add(rightEar);
+            
+            // Eyes
+            const eyeGeometry = new THREE.SphereGeometry(0.08, 16, 16);
+            const eyeMaterial = new THREE.MeshLambertMaterial({ color: 0x000000 });
+            
+            const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+            leftEye.position.set(-0.2, 0.6, 1.4);
+            dogGroup.add(leftEye);
+            
+            const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+            rightEye.position.set(0.2, 0.6, 1.4);
+            dogGroup.add(rightEye);
+            
+            // Nose
+            const noseGeometry = new THREE.SphereGeometry(0.1, 16, 16);
+            const noseMaterial = new THREE.MeshLambertMaterial({ color: 0x000000 });
+            const nose = new THREE.Mesh(noseGeometry, noseMaterial);
+            nose.position.set(0, 0.4, 1.45);
+            dogGroup.add(nose);
+            
+            // Tail
+            const tailGeometry = new THREE.BoxGeometry(0.2, 0.2, 0.6);
+            const tailMaterial = new THREE.MeshLambertMaterial({ color: 0xD2691E });
+            const tail = new THREE.Mesh(tailGeometry, tailMaterial);
+            tail.position.set(0, 0.3, -0.8);
+            tail.rotation.x = 0.5;
+            tail.castShadow = true;
+            dogGroup.add(tail);
+            
+            // Legs
+            const legGeometry = new THREE.BoxGeometry(0.25, 0.5, 0.25);
+            const legMaterial = new THREE.MeshLambertMaterial({ color: 0xD2691E });
+            
+            const positions = [
+                [-0.3, -0.3, 0.5],
+                [0.3, -0.3, 0.5],
+                [-0.3, -0.3, -0.5],
+                [0.3, -0.3, -0.5]
+            ];
+            
+            positions.forEach(pos => {
+                const leg = new THREE.Mesh(legGeometry, legMaterial);
+                leg.position.set(...pos);
+                leg.castShadow = true;
+                dogGroup.add(leg);
+            });
+            
+            dogGroup.position.set(0, groundLevel + 0.5, 0);
+            scene.add(dogGroup);
+            dog = dogGroup;
+        }
+        
+        function createTree(x, z) {
+            const treeGroup = new THREE.Group();
+            
+            // Trunk
+            const trunkGeometry = new THREE.CylinderGeometry(0.2, 0.3, 1.5, 8);
+            const trunkMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+            const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+            trunk.castShadow = true;
+            treeGroup.add(trunk);
+            
+            // Leaves (multiple cones)
+            const leavesMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
+            
+            for (let i = 0; i < 3; i++) {
+                const leavesGeometry = new THREE.ConeGeometry(0.8 - i * 0.2, 1, 8);
+                const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
+                leaves.position.y = 1 + i * 0.7;
+                leaves.castShadow = true;
+                treeGroup.add(leaves);
+            }
+            
+            treeGroup.position.set(x, groundLevel, z);
+            scene.add(treeGroup);
+            trees.push(treeGroup);
+        }
+        
+        function createFence(x, z) {
+            const fenceGroup = new THREE.Group();
+            const fenceMaterial = new THREE.MeshLambertMaterial({ color: 0xDEB887 });
+            
+            // Posts
+            for (let i = -2; i <= 2; i++) {
+                const postGeometry = new THREE.BoxGeometry(0.15, 1.2, 0.15);
+                const post = new THREE.Mesh(postGeometry, fenceMaterial);
+                post.position.set(i * 0.8, 0.6, 0);
+                post.castShadow = true;
+                fenceGroup.add(post);
+            }
+            
+            // Horizontal bars
+            for (let i = 0; i < 2; i++) {
+                const barGeometry = new THREE.BoxGeometry(4.2, 0.1, 0.1);
+                const bar = new THREE.Mesh(barGeometry, fenceMaterial);
+                bar.position.set(0, 0.4 + i * 0.4, 0);
+                bar.castShadow = true;
+                fenceGroup.add(bar);
+            }
+            
+            fenceGroup.position.set(x, groundLevel, z);
+            fenceGroup.rotation.y = Math.PI / 2;
+            scene.add(fenceGroup);
+            fences.push(fenceGroup);
+        }
+        
+        function spawnObstacle() {
+            const type = Math.random() > 0.5 ? 'tree' : 'fence';
+            const x = 50;
+            const z = (Math.random() - 0.5) * 8;
+            
+            if (type === 'tree') {
+                createTree(x, z);
+            } else {
+                createFence(x, z);
+            }
+        }
+        
+        function handleKeyDown(event) {
+            if (event.code === 'Space' && gameRunning) {
+                jump();
+            }
+        }
+        
+        function handleClick() {
+            if (gameRunning) {
+                jump();
+            }
+        }
+        
+        function jump() {
+            if (!isJumping) {
+                isJumping = true;
+                jumpVelocity = 0.25;
+            }
+        }
+        
+        function updateDog() {
+            // Apply gravity
+            if (isJumping) {
+                dog.position.y += jumpVelocity;
+                jumpVelocity += gravity;
+                
+                // Check if landed
+                if (dog.position.y <= groundLevel + 0.5) {
+                    dog.position.y = groundLevel + 0.5;
+                    isJumping = false;
+                    jumpVelocity = 0;
+                }
+            }
+            
+            // Animate tail wagging
+            if (dogGroup) {
+                const tail = dogGroup.children.find(child => 
+                    child.geometry && child.geometry.type === 'BoxGeometry' && 
+                    child.position.z < -0.5
+                );
+                if (tail) {
+                    tail.rotation.x = 0.5 + Math.sin(Date.now() * 0.01) * 0.3;
+                }
+                
+                // Animate ears when jumping
+                const ears = dogGroup.children.filter(child => 
+                    child.geometry && child.geometry.type === 'BoxGeometry' && 
+                    Math.abs(child.position.z - 1) < 0.1 && Math.abs(child.position.x) > 0.2
+                );
+                ears.forEach((ear, index) => {
+                    if (isJumping) {
+                        ear.rotation.z = (index === 0 ? 0.5 : -0.5) + Math.sin(Date.now() * 0.02) * 0.2;
+                    } else {
+                        ear.rotation.z = (index === 0 ? 0.3 : -0.3);
+                    }
+                });
+            }
+        }
+        
+        function updateObstacles() {
+            obstacleTimer++;
+            
+            // Spawn new obstacles
+            if (obstacleTimer > 100 - Math.min(score * 2, 60)) {
+                spawnObstacle();
+                obstacleTimer = 0;
+            }
+            
+            // Move and check collisions
+            const dogBox = new THREE.Box3().setFromObject(dog);
+            dogBox.expandByScalar(-0.2); // Make hitbox slightly smaller
+            
+            [...trees, ...fences].forEach((obstacle, index) => {
+                obstacle.position.x -= gameSpeed;
+                
+                // Check collision
+                const obstacleBox = new THREE.Box3().setFromObject(obstacle);
+                if (dogBox.intersectsBox(obstacleBox)) {
+                    gameOver();
+                }
+                
+                // Remove obstacles that are off screen
+                if (obstacle.position.x < -10) {
+                    scene.remove(obstacle);
+                    if (trees.includes(obstacle)) {
+                        trees.splice(index, 1);
+                    } else {
+                        fences.splice(fences.indexOf(obstacle), 1);
+                    }
+                    score++;
+                    updateScore();
+                    
+                    // Increase difficulty
+                    if (score % 5 === 0) {
+                        gameSpeed += 0.01;
+                    }
+                }
+            });
+        }
+        
+        function updateScore() {
+            document.getElementById('score').textContent = `Score: ${score}`;
+        }
+        
+        function startGame() {
+            document.getElementById('startScreen').style.display = 'none';
+            gameRunning = true;
+            animate();
+        }
+        
+        function restartGame() {
+            // Reset game state
+            score = 0;
+            gameSpeed = 0.15;
+            obstacleTimer = 0;
+            updateScore();
+            
+            // Remove all obstacles
+            [...trees, ...fences].forEach(obstacle => {
+                scene.remove(obstacle);
+            });
+            trees = [];
+            fences = [];
+            
+            // Reset dog position
+            dog.position.y = groundLevel + 0.5;
+            isJumping = false;
+            jumpVelocity = 0;
+            
+            // Hide game over screen
+            document.getElementById('gameOver').style.display = 'none';
+            
+            // Start game
+            gameRunning = true;
+        }
+        
+        function gameOver() {
+            gameRunning = false;
+            document.getElementById('finalScore').textContent = `Score: ${score}`;
+            document.getElementById('gameOver').style.display = 'block';
+            cancelAnimationFrame(animationId);
+        }
+        
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        function animate() {
+            if (!gameRunning) return;
+            
+            animationId = requestAnimationFrame(animate);
+            
+            updateDog();
+            updateObstacles();
+            
+            renderer.render(scene, camera);
+        }
+        
+        // Initialize the game
+        init();
+    </script>
+</body>
+</html>
